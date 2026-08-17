@@ -1,6 +1,8 @@
 # visual_grid_game.py
 import random
+import sys
 import tkinter as tk
+from agent import SearchAgent
 
 
 class VisualGridHuntGame:
@@ -61,6 +63,9 @@ class VisualGridHuntGame:
         return {
             'wall_ahead': wall_ahead,
             'food_here': food_here,
+            'grid_size': (self.width, self.height),
+            'walls': list(self.walls),
+            'all_food': list(self.food_positions),
         }
 
     def _front_cell(self):
@@ -110,18 +115,21 @@ class VisualGridHuntGame:
                 self.collision = True
 
     def is_done(self) -> bool:
-        return len(self.food_positions) == 0 or self.steps >= 60 or self.collision
+        return len(self.food_positions) == 0 or self.steps >= 1000 or self.collision
 
 
 class GridGameGUI:
     """Tkinter wrapper that dynamically scales cell sizes to keep larger grids on screen."""
 
-    def __init__(self, root, width=10, height=10, num_food=12, num_opponents=2, walls=None):
+    def __init__(self, root, width=10, height=10, num_food=12, num_opponents=2, walls=None, algo='BFS'):
         self.root = root
         self.root.title("IT3012 - Scalable Multi-Agent Grid Hunt")
 
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
+        
+        self.agent = SearchAgent()
+        self.agent.active_algo = algo
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -193,7 +201,8 @@ class GridGameGUI:
 
         def step():
             if not self.env.is_done():
-                action = random.choice(['Up', 'Down', 'Left', 'Right'])
+                percept = self.env.get_percept()
+                action = self.agent.sense_and_act(percept)
                 self.env.execute_action(action)
 
                 self.draw_grid()
@@ -209,6 +218,10 @@ class GridGameGUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # Usage: python visual_grid_game.py [BFS|DFS|UCS] (default: BFS)
+    algo = sys.argv[1] if len(sys.argv) > 1 else 'BFS'
+
     # Try a larger grid size like 12x12 with 15 food and 3 opponents!
-    app = GridGameGUI(root, width=12, height=12, num_food=15, num_opponents=0)
+    app = GridGameGUI(root, width=12, height=12, num_food=15, num_opponents=0, algo=algo)
     root.mainloop()
