@@ -2,6 +2,7 @@
 import random
 from collections import deque
 import heapq
+import math
 
 
 class GreedyGridAgent:
@@ -135,11 +136,45 @@ class SearchAgent:
                     heapq.heappush(pq, (cost + 1, nx, ny, path + [name]))
         return None
 
+    def manhattan_distance(self, pos, goal):
+        return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+    def euclidean_distance(self, pos, goal):
+        return math.sqrt((pos[0] - goal[0]) ** 2 + (pos[1] - goal[1]) ** 2)
+
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+        sx, sy = start_pos
+        gx, gy = goal_pos
+        heuristic = (self.manhattan_distance if heuristic_type == 'manhattan'
+                     else self.euclidean_distance)
+
+        h_start = heuristic((sx, sy), (gx, gy))
+        pq = [(h_start, 0, (sx, sy), [])]        # f = g(0) + h(start)
+        reached_states = set()
+
+        dirs = [('Up', 0, 1), ('Right', 1, 0),
+                ('Down', 0, -1), ('Left', -1, 0)]
+        while pq:
+            f_cost, g_cost, (x, y), path = heapq.heappop(pq)
+            if (x, y) == (gx, gy):
+                return path
+            if (x, y) in reached_states:
+                continue
+            reached_states.add((x, y))
+            for name, dx, dy in dirs:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < grid_size[0] and 0 <= ny < grid_size[1]
+                        and (nx, ny) not in walls and (nx, ny) not in reached_states):
+                    g_new = g_cost + 1
+                    h_new = heuristic((nx, ny), (gx, gy))
+                    heapq.heappush(pq, (g_new + h_new, g_new, (nx, ny), path + [name]))
+        return None
+
     def sense_and_act(self, percept: dict) -> str:
         if not self.plan:
             grid_size = percept.get('grid_size', (10, 10))
             walls = percept.get('walls', [])
-            all_food = percept.get('all_food', [])
+            all_food = percept.get('remaining_food') or percept.get('all_food') or []
             if all_food:
                 closest = min(
                     all_food,
@@ -150,6 +185,8 @@ class SearchAgent:
                     self.plan = self.bfs_search(start, goal, walls, grid_size) or []
                 elif self.active_algo == 'DFS':
                     self.plan = self.dfs_search(start, goal, walls, grid_size) or []
+                elif self.active_algo == 'AStar':
+                    self.plan = self.astar_search(start, goal, walls, grid_size) or []
                 else:  # UCS
                     self.plan = self.ucs_search(start, goal, walls, grid_size) or []
 
