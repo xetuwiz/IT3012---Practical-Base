@@ -3,6 +3,7 @@ import random
 from collections import deque
 import heapq
 import math
+from logic_engine import KnowledgeBase
 
 
 class GreedyGridAgent:
@@ -73,6 +74,10 @@ class SearchAgent:
         self.x = 0
         self.y = 0
 
+        self.kb = KnowledgeBase()
+        self.kb.tell_rule(['TargetVisible', 'HasDust'], 'SafeToEngage')     # Rule 1
+        self.kb.tell_rule(['SafeToEngage', 'BloodseekerMissing'], 'Retreat')  # Rule 2
+
     def bfs_search(self, start, goal, walls, grid_size):
         sx, sy = start
         gx, gy = goal
@@ -142,7 +147,22 @@ class SearchAgent:
     def euclidean_distance(self, pos, goal):
         return math.sqrt((pos[0] - goal[0]) ** 2 + (pos[1] - goal[1]) ** 2)
 
-    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+    def _tile_facts(self, nx, ny, goal_pos, walls, danger_zones):
+        facts = []
+        if abs(nx - goal_pos[0]) + abs(ny - goal_pos[1]) <= 6:
+            facts.append('TargetVisible')
+        adjacent_wall = False
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            if (nx + dx, ny + dy) in walls:
+                adjacent_wall = True
+                break
+        if adjacent_wall:
+            facts.append('HasDust')
+        if danger_zones and (nx, ny) in danger_zones:
+            facts.append('BloodseekerMissing')
+        return facts
+
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan', danger_zones=None):
         sx, sy = start_pos
         gx, gy = goal_pos
         heuristic = (self.manhattan_distance if heuristic_type == 'manhattan'
@@ -163,11 +183,23 @@ class SearchAgent:
             reached_states.add((x, y))
             for name, dx, dy in dirs:
                 nx, ny = x + dx, y + dy
-                if (0 <= nx < grid_size[0] and 0 <= ny < grid_size[1]
-                        and (nx, ny) not in walls and (nx, ny) not in reached_states):
-                    g_new = g_cost + 1
-                    h_new = heuristic((nx, ny), (gx, gy))
-                    heapq.heappush(pq, (g_new + h_new, g_new, (nx, ny), path + [name]))
+                if not (0 <= nx < grid_size[0] and 0 <= ny < grid_size[1]):
+                    continue
+                if (nx, ny) in walls:
+                    continue
+                if (nx, ny) in reached_states:
+                    continue
+
+                self.kb.clear_facts()
+                for fact in self._tile_facts(nx, ny, (gx, gy), walls, danger_zones):
+                    self.kb.tell_fact(fact)
+                self.kb.forward_chain()
+                if 'Retreat' in self.kb.facts:
+                    continue
+
+                g_new = g_cost + 1
+                h_new = heuristic((nx, ny), (gx, gy))
+                heapq.heappush(pq, (g_new + h_new, g_new, (nx, ny), path + [name]))
         return None
 
     def sense_and_act(self, percept: dict) -> str:
